@@ -1,14 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Input } from "@/components/ui/input";
-import { BrainCircuit, Timer, ListChecks, AlertCircle } from "lucide-react";
+import {
+  BrainCircuit,
+  Timer,
+  ListChecks,
+  AlertCircle,
+  Save,
+} from "lucide-react";
+import { useToast } from "@/components/ui/use-toast";
 
 export function QuizConfigPanel() {
+  const { toast } = useToast();
   const [questionCount, setQuestionCount] = useState(10);
   const [timeLimit, setTimeLimit] = useState(30); // in minutes
   const [selectedTypes, setSelectedTypes] = useState({
@@ -17,12 +24,54 @@ export function QuizConfigPanel() {
     shortAnswer: false,
     fillBlanks: false,
   });
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">(
+    "medium",
+  );
+
+  // Save configuration to sessionStorage whenever it changes
+  useEffect(() => {
+    const config = {
+      questionCount,
+      timeLimit,
+      questionTypes: selectedTypes,
+      difficulty,
+    };
+    sessionStorage.setItem("quizConfig", JSON.stringify(config));
+  }, [questionCount, timeLimit, selectedTypes, difficulty]);
 
   const handleTypeChange = (type: keyof typeof selectedTypes) => {
     setSelectedTypes((prev) => ({
       ...prev,
       [type]: !prev[type],
     }));
+  };
+
+  const handleDifficultyChange = (level: "easy" | "medium" | "hard") => {
+    setDifficulty(level);
+  };
+
+  const saveConfiguration = () => {
+    if (!Object.values(selectedTypes).some(Boolean)) {
+      toast({
+        title: "Configuration Error",
+        description: "Please select at least one question type",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const config = {
+      questionCount,
+      timeLimit,
+      questionTypes: selectedTypes,
+      difficulty,
+    };
+    sessionStorage.setItem("quizConfig", JSON.stringify(config));
+
+    toast({
+      title: "Configuration Saved",
+      description: "Your quiz configuration has been saved",
+    });
   };
 
   return (
@@ -153,26 +202,45 @@ export function QuizConfigPanel() {
         <div>
           <h3 className="text-sm font-medium mb-3">Difficulty Level</h3>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1 bg-primary/5">
+            <Button
+              variant="outline"
+              className={`flex-1 ${difficulty === "easy" ? "bg-primary/10 border-primary" : ""}`}
+              onClick={() => handleDifficultyChange("easy")}
+            >
               Easy
             </Button>
-            <Button variant="outline" className="flex-1 bg-primary/10">
+            <Button
+              variant="outline"
+              className={`flex-1 ${difficulty === "medium" ? "bg-primary/10 border-primary" : ""}`}
+              onClick={() => handleDifficultyChange("medium")}
+            >
               Medium
             </Button>
-            <Button variant="outline" className="flex-1">
+            <Button
+              variant="outline"
+              className={`flex-1 ${difficulty === "hard" ? "bg-primary/10 border-primary" : ""}`}
+              onClick={() => handleDifficultyChange("hard")}
+            >
               Hard
             </Button>
           </div>
         </div>
 
-        {/* Generate Button */}
+        {/* Save Configuration Button */}
         <Button
           className="w-full mt-6"
           size="lg"
           disabled={!Object.values(selectedTypes).some(Boolean)}
+          onClick={saveConfiguration}
         >
-          Generate Quiz
+          <Save className="mr-2 h-4 w-4" />
+          Save Configuration
         </Button>
+
+        <p className="text-xs text-muted-foreground text-center mt-2">
+          Configuration is automatically saved when you make changes. Click the
+          button above to manually save your settings.
+        </p>
       </div>
     </div>
   );

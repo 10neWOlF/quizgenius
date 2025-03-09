@@ -3,14 +3,30 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Upload, Image, FileUp, File, X } from "lucide-react";
+import {
+  FileText,
+  Upload,
+  Image,
+  FileUp,
+  File,
+  X,
+  Loader2,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useRouter } from "next/navigation";
 
 export function ContentUploader() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("text");
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [textContent, setTextContent] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Handle drag events
   const handleDrag = (e: React.DragEvent) => {
@@ -45,9 +61,117 @@ export function ContentUploader() {
     setUploadedFile(null);
   };
 
+  // Read file content
+  const readFileContent = async (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          resolve(event.target.result.toString());
+        } else {
+          reject(new Error("Failed to read file"));
+        }
+      };
+      reader.onerror = () => reject(new Error("File reading error"));
+      reader.readAsText(file);
+    });
+  };
+
+  // Generate quiz from content
+  const generateQuiz = async (contentType: string) => {
+    if (!title.trim()) {
+      setError("Please enter a title for your quiz");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      let content = "";
+
+      // Get content based on the active tab
+      if (contentType === "text") {
+        content = textContent;
+      } else if (uploadedFile) {
+        // For PDF, Image, and Document, we'll use the file content
+        // In a real app, you'd handle these differently based on file type
+        content = await readFileContent(uploadedFile);
+      }
+
+      // Get quiz configuration from sessionStorage (set by QuizConfigPanel)
+      const configString = sessionStorage.getItem("quizConfig");
+      if (!configString) {
+        throw new Error("Quiz configuration not found");
+      }
+
+      const config = JSON.parse(configString);
+
+      // Call the API to generate questions
+      const response = await fetch("/api/generate-questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          content,
+          contentType,
+          title,
+          description,
+          questionCount: config.questionCount,
+          questionTypes: Object.keys(config.questionTypes).filter(
+            (key) => config.questionTypes[key],
+          ),
+          difficulty: config.difficulty,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to generate quiz");
+      }
+
+      const data = await response.json();
+
+      // Redirect to the quiz page
+      router.push(`/dashboard/quiz/${data.quizId}`);
+    } catch (err) {
+      console.error("Error generating quiz:", err);
+      setError(
+        err instanceof Error ? err.message : "An unknown error occurred",
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="bg-card rounded-xl p-6 border shadow-sm">
       <h2 className="text-xl font-semibold mb-4">Upload Content</h2>
+
+      {/* Quiz Title and Description */}
+      <div className="space-y-4 mb-6">
+        <div>
+          <Label htmlFor="quiz-title">Quiz Title</Label>
+          <Input
+            id="quiz-title"
+            placeholder="Enter a title for your quiz"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="quiz-description">Description (Optional)</Label>
+          <Textarea
+            id="quiz-description"
+            placeholder="Enter a description for your quiz"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="resize-none"
+            rows={2}
+          />
+        </div>
+      </div>
 
       <Tabs defaultValue="text" value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid grid-cols-4 mb-6">
@@ -72,8 +196,19 @@ export function ContentUploader() {
             value={textContent}
             onChange={(e) => setTextContent(e.target.value)}
           />
-          <Button disabled={!textContent.trim()} className="w-full">
-            Generate Quiz from Text
+          <Button
+            disabled={!textContent.trim() || isLoading}
+            className="w-full"
+            onClick={() => generateQuiz("text")}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating Quiz...
+              </>
+            ) : (
+              "Generate Quiz from Text"
+            )}
           </Button>
         </TabsContent>
 
@@ -129,8 +264,19 @@ export function ContentUploader() {
               </div>
             </div>
           )}
-          <Button disabled={!uploadedFile} className="w-full">
-            Generate Quiz from PDF
+          <Button
+            disabled={!uploadedFile || isLoading}
+            className="w-full"
+            onClick={() => generateQuiz("pdf")}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating Quiz...
+              </>
+            ) : (
+              "Generate Quiz from PDF"
+            )}
           </Button>
         </TabsContent>
 
@@ -186,8 +332,19 @@ export function ContentUploader() {
               </div>
             </div>
           )}
-          <Button disabled={!uploadedFile} className="w-full">
-            Generate Quiz from Image
+          <Button
+            disabled={!uploadedFile || isLoading}
+            className="w-full"
+            onClick={() => generateQuiz("image")}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating Quiz...
+              </>
+            ) : (
+              "Generate Quiz from Image"
+            )}
           </Button>
         </TabsContent>
 
@@ -243,11 +400,29 @@ export function ContentUploader() {
               </div>
             </div>
           )}
-          <Button disabled={!uploadedFile} className="w-full">
-            Generate Quiz from Document
+          <Button
+            disabled={!uploadedFile || isLoading}
+            className="w-full"
+            onClick={() => generateQuiz("document")}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Generating Quiz...
+              </>
+            ) : (
+              "Generate Quiz from Document"
+            )}
           </Button>
         </TabsContent>
       </Tabs>
+
+      {/* Error message */}
+      {error && (
+        <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-600 rounded-md text-sm">
+          {error}
+        </div>
+      )}
     </div>
   );
 }
